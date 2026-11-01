@@ -134,15 +134,15 @@
           "__rl": true,
           "value": "1094273092211195984",
           "mode": "list",
-          "cachedResultName": "遊戲討論區",
-          "cachedResultUrl": "https://discord.com/channels/1094273092211195984"
+          "cachedResultName": "",
+          "cachedResultUrl": ""
         },
         "channelId": {
           "__rl": true,
           "value": "1403805618384535696",
           "mode": "list",
-          "cachedResultName": "cnn每日新聞",
-          "cachedResultUrl": "https://discord.com/channels/1094273092211195984/1403805618384535696"
+          "cachedResultName": "",
+          "cachedResultUrl": ""
         },
         "content": "=https://edition.cnn.com/{{ $json.href }}\n{{ $json[\"message.content.title\"] }}\n{{ $json[\"message.content.content\"] }}",
         "options": {}
