@@ -132,14 +132,14 @@
         "resource": "message",
         "guildId": {
           "__rl": true,
-          "value": "1094273092211195984",
+          "value": "",
           "mode": "list",
           "cachedResultName": "",
           "cachedResultUrl": ""
         },
         "channelId": {
           "__rl": true,
-          "value": "1403805618384535696",
+          "value": "",
           "mode": "list",
           "cachedResultName": "",
           "cachedResultUrl": ""

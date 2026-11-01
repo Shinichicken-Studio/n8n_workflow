@@ -1,0 +1,644 @@
+{
+  "name": "每日國際新聞 v4（Anthropic）",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 12,
+              "triggerAtMinute": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -640,
+        480
+      ],
+      "id": "c3000000-0000-4000-8000-000000000001",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://www.theguardian.com/world/rss",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -416,
+        160
+      ],
+      "id": "c3000000-0000-4000-8000-000000000002",
+      "name": "RSS Guardian World",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cutoff = Date.now() - 26 * 3600 * 1000;\nconst items = $input.all()\n  .map(i => i.json)\n  .filter(j => j.link && j.title && new Date(j.isoDate || j.pubDate || 0).getTime() >= cutoff)\n  .filter(j => !/\\/(live|video|audio|gallery|ng-interactive|picture|membership)\\//.test(j.link))\n  .slice(0, 8);\nreturn items.map(j => ({ json: { title: j.title, link: j.link.split('?')[0] } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        160
+      ],
+      "id": "c3000000-0000-4000-8000-000000000003",
+      "name": "Guardian Filter"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.link }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        32,
+        160
+      ],
+      "id": "c3000000-0000-4000-8000-000000000019",
+      "name": "Guardian Fetch Article",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const meta = $('Guardian Filter').item.json;\nconst html = $json.data;\nif (typeof html !== 'string' || !html) return null;\nconst strip = s => s.replace(/<[^>]*>/g, ' ');\nconst dec = s => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n  .replace(/&quot;/g, '\"').replace(/&#x27;|&#39;/g, \"'\").replace(/&nbsp;/g, ' ')\n  .replace(/\\s+/g, ' ').trim();\nconst junk = /^(Sign up|Follow |Read more|Related|Advertisement|Reuse this content|Share$|Topics$)/i;\nconst grab = (seg, re) => {\n  const out = [];\n  let m;\n  while ((m = re.exec(seg)) !== null) {\n    const t = dec(strip(m[1]));\n    if (t && !junk.test(t)) out.push(t);\n  }\n  return out;\n};\nconst pRe = () => /<p[^>]*>([\\s\\S]*?)<\\/p>/g;\nlet text = '';\n// 方法1：JSON-LD 的 articleBody（若頁面有提供）\nfor (const m of html.matchAll(/<script[^>]*application\\/ld\\+json[^>]*>([\\s\\S]*?)<\\/script>/g)) {\n  try {\n    const j = JSON.parse(m[1]);\n    for (const o of (Array.isArray(j) ? j : [j])) {\n      if (o && typeof o.articleBody === 'string' && o.articleBody.trim().length > text.length) text = o.articleBody.trim();\n    }\n  } catch (e) {}\n}\n// 方法2：內文區塊（data-gu-name=\"body\" 或 #maincontent）\nif (text.length < 300) {\n  let seg = '';\n  const i = html.indexOf('data-gu-name=\"body\"');\n  if (i >= 0) seg = html.slice(i);\n  else { const k = html.indexOf('id=\"maincontent\"'); if (k >= 0) seg = html.slice(k); }\n  const e = seg.indexOf('</article>');\n  if (e > 0) seg = seg.slice(0, e);\n  text = grab(seg, pRe()).filter(t => t.length >= 40).join('\\n');\n}\n// 方法3：<article> 內較長的段落\nif (text.length < 300) {\n  const a = html.match(/<article[\\s\\S]*?<\\/article>/i);\n  if (a) text = grab(a[0], pRe()).filter(t => t.length >= 60).join('\\n');\n}\n// 方法4：最後手段，整頁較長的段落\nif (text.length < 300) text = grab(html, pRe()).filter(t => t.length >= 80).join('\\n');\nif (!text) return null;\nreturn { source: 'The Guardian', title: meta.title, link: meta.link, text };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        160
+      ],
+      "id": "c3000000-0000-4000-8000-000000000020",
+      "name": "Guardian Extract"
+    },
+    {
+      "parameters": {
+        "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -416,
+        480
+      ],
+      "id": "c3000000-0000-4000-8000-000000000004",
+      "name": "RSS BBC World",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cutoff = Date.now() - 26 * 3600 * 1000;\nconst items = $input.all()\n  .map(i => i.json)\n  .filter(j => j.link && j.title && new Date(j.isoDate || j.pubDate || 0).getTime() >= cutoff)\n  .filter(j => /\\/news\\/(articles|world)/.test(j.link))\n  .slice(0, 8);\nreturn items.map(j => ({ json: { title: j.title, link: j.link } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        480
+      ],
+      "id": "c3000000-0000-4000-8000-000000000005",
+      "name": "BBC Filter"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.link }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        32,
+        480
+      ],
+      "id": "c3000000-0000-4000-8000-000000000006",
+      "name": "BBC Fetch Article",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const meta = $('BBC Filter').item.json;\nconst html = $json.data;\nif (typeof html !== 'string' || !html) return null;\nconst strip = s => s.replace(/<[^>]*>/g, ' ');\nconst dec = s => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n  .replace(/&quot;/g, '\"').replace(/&#x27;|&#39;/g, \"'\").replace(/&nbsp;/g, ' ')\n  .replace(/\\s+/g, ' ').trim();\nconst junk = /This video can not be played|To play this video/i;\nconst grab = (seg, re) => {\n  const out = [];\n  let m;\n  while ((m = re.exec(seg)) !== null) {\n    const t = dec(strip(m[1]));\n    if (t && !junk.test(t)) out.push(t);\n  }\n  return out;\n};\nconst art = (html.match(/<article[\\s\\S]*?<\\/article>/i) || [html])[0];\n// 方法1：<article> 內 class 含 Paragraph 的段落（BBC 目前的版面）\nlet paras = grab(art, /<p[^>]*class=\"[^\"]*Paragraph[^\"]*\"[^>]*>([\\s\\S]*?)<\\/p>/g);\n// 方法2：舊版 text-block 區塊\nif (paras.join('').length < 300) {\n  paras = [];\n  for (const part of html.split('data-component=\"text-block\"').slice(1)) {\n    paras.push(...grab(part.split(/data-component=\"/)[0], /<p[^>]*>([\\s\\S]*?)<\\/p>/g));\n  }\n}\n// 方法3：<article> 內較長的 <p>\nif (paras.join('').length < 300) paras = grab(art, /<p[^>]*>([\\s\\S]*?)<\\/p>/g).filter(t => t.length >= 60);\n// 方法4：最後手段，整頁較長的段落\nif (paras.join('').length < 300) paras = grab(html, /<p[^>]*>([\\s\\S]*?)<\\/p>/g).filter(t => t.length >= 80);\nconst text = paras.join('\\n');\nif (!text) return null;\nreturn { source: 'BBC', title: meta.title, link: meta.link, text };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        480
+      ],
+      "id": "c3000000-0000-4000-8000-000000000007",
+      "name": "BBC Extract"
+    },
+    {
+      "parameters": {
+        "url": "https://r.jina.ai/https://edition.cnn.com/world",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -416,
+        800
+      ],
+      "id": "c3000000-0000-4000-8000-000000000008",
+      "name": "CNN Index (Jina)",
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "const md = $input.first().json.data;\nif (typeof md !== 'string') return [];\nconst fmt = d => `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`;\nconst now = Date.now();\n// CNN 網址的日期是美國時間：收 UTC 昨天、UTC 今天、台北今天，再靠去重避免重複\nconst days = new Set([fmt(new Date(now - 86400000)), fmt(new Date(now)), fmt(new Date(now + 8 * 3600000))]);\nconst exclude = /\\/(live-news|videos?|interactive|gallery|audio)\\//;\nconst re = /\\]\\((https:\\/\\/(?:edition|www)\\.cnn\\.com\\/(\\d{4}\\/\\d{2}\\/\\d{2})\\/[^)\\s#?]+)/g;\nconst seen = new Set();\nconst out = [];\nlet m;\nwhile ((m = re.exec(md)) !== null) {\n  const link = m[1];\n  if (!days.has(m[2]) || exclude.test(link) || seen.has(link)) continue;\n  seen.add(link);\n  out.push({ json: { link } });\n  if (out.length >= 8) break;\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        800
+      ],
+      "id": "c3000000-0000-4000-8000-000000000009",
+      "name": "CNN Links"
+    },
+    {
+      "parameters": {
+        "url": "=https://r.jina.ai/{{ $json.link }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Return-Format",
+              "value": "text"
+            },
+            {
+              "name": "X-Remove-Selector",
+              "value": "header, footer, nav, aside"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 3500
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        32,
+        800
+      ],
+      "id": "c3000000-0000-4000-8000-000000000010",
+      "name": "CNN Fetch Article (Jina)",
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const meta = $('CNN Links').item.json;\nconst raw = $json.data;\nif (typeof raw !== 'string' || !raw) return null;\nlet title = '', body = raw;\ntry {\n  const j = JSON.parse(raw);\n  if (j && j.data) { title = j.data.title || ''; body = j.data.content || j.data.text || ''; }\n} catch (e) {\n  const tm = raw.match(/^Title:\\s*(.+)$/m);\n  if (tm) title = tm[1];\n  const cm = raw.match(/^\\w+ Content:\\s*$/m);\n  body = cm ? raw.slice(raw.indexOf(cm[0]) + cm[0].length) : raw;\n}\ntitle = String(title).replace(/\\s*\\|\\s*CNN.*$/i, '').trim();\nif (!title) {\n  // 沒有標題時，用網址最後的 slug 當備用，絕不使用完整網址\n  const seg = meta.link.split('/').filter(Boolean).slice(-2)[0] || '';\n  title = decodeURIComponent(seg).replace(/-/g, ' ').replace(/^\\w/, c => c.toUpperCase());\n}\nbody = body.replace(/!\\[[^\\]]*\\]\\([^)]*\\)/g, '').replace(/\\[([^\\]]+)\\]\\([^)]*\\)/g, '$1');\nconst lines = body.split('\\n').map(l => l.trim())\n  .filter(l => l.length >= 60 && !/^(#|\\*|-|>|Image|Sign up|Read more|Watch|Copyright|©|Follow)/i.test(l));\nconst text = lines.join('\\n');\nif (!text) return null;\nreturn { source: 'CNN', title, link: meta.link, text };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        800
+      ],
+      "id": "c3000000-0000-4000-8000-000000000011",
+      "name": "CNN Extract"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        464,
+        480
+      ],
+      "id": "c3000000-0000-4000-8000-000000000012",
+      "name": "Merge Sources"
+    },
+    {
+      "parameters": {
+        "jsCode": "const MIN_LEN = 400, MAX_LEN = 4000, PER_SOURCE = 3, MAX_TOTAL = 9;\nconst seen = new Set();\nconst count = {};\nconst out = [];\nfor (const it of $input.all()) {\n  const j = it.json;\n  if (!j.text || j.text.length < MIN_LEN) continue;\n  const key = String(j.title).toLowerCase().replace(/[^a-z0-9]/g, '');\n  if (seen.has(key)) continue;\n  count[j.source] = (count[j.source] || 0);\n  if (count[j.source] >= PER_SOURCE) continue;\n  seen.add(key);\n  count[j.source]++;\n  out.push({ json: { source: j.source, title: j.title, link: j.link, text: j.text.slice(0, MAX_LEN) } });\n  if (out.length >= MAX_TOTAL) break;\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        480
+      ],
+      "id": "c3000000-0000-4000-8000-000000000013",
+      "name": "Full Text Only"
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        880,
+        480
+      ],
+      "id": "c3000000-0000-4000-8000-000000000014",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-haiku-5-5",
+          "mode": "id"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.source }}: {{ $json.title }}\n\n{{ $json.text }}"
+            }
+          ]
+        },
+        "options": {
+          "system": "你是一位新聞編輯。我會提供一則英文新聞的全文，請用繁體中文寫一個中文標題與簡介：簡介約150～250字，整理3～5個重點（誰、發生什麼事、為什麼重要）。只根據全文，不要加入自己的評論，不要編造數字或引述；專有名詞第一次出現時可附英文原文。\n只輸出一個 JSON 物件，不要加任何說明文字或 markdown 程式碼框，格式完全如下：\n{\"title\": \"中文標題\", \"summary\": \"中文簡介\"}",
+          "maxTokens": 4096
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1104,
+        496
+      ],
+      "id": "c3000000-0000-4000-8000-000000000015",
+      "name": "Message a model",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const SHOW_PREVIEW = true; // 改成 false 會把連結包成 <>，Discord 就不會展開預覽圖\nconst src = $('Loop Over Items').item.json;\nconst blocks = Array.isArray($json.content) ? $json.content : [];\nconst raw = blocks.filter(b => b.type === 'text').map(b => b.text || '').join('\\n')\n  || $json.mergedResponse || $json.text || '';\nlet zhTitle = '', summary = '';\nconst cleaned = String(raw).trim().replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/, '');\nconst s = cleaned.indexOf('{'), e = cleaned.lastIndexOf('}');\ntry {\n  const o = JSON.parse(s >= 0 && e > s ? cleaned.slice(s, e + 1) : cleaned);\n  zhTitle = o.title || '';\n  summary = o.summary || o.content || '';\n} catch (err) {\n  const t = cleaned.match(/\"title\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)/);\n  const m = cleaned.match(/\"summary\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)/);\n  zhTitle = t ? t[1] : '';\n  summary = m ? m[1] : (t ? '' : cleaned);\n}\nsummary = summary || '(簡介產生失敗，請點原文連結閱讀)';\n// 英文標題若是網址就不顯示，避免網址重複出現\nconst enTitle = /^https?:\\/\\//i.test(src.title || '') ? '' : (src.title || '');\nconst link = SHOW_PREVIEW ? src.link : `<${src.link}>`;\nconst head = `📰 **【${src.source}】**\\n### ${zhTitle || enTitle}\\n` + (zhTitle && enTitle ? `-# ${enTitle}\\n` : '');\nconst tail = `\\n\\n🔗 ${link}`;\nconst room = 1990 - head.length - tail.length - 1;\nconst body = summary.length > room ? summary.slice(0, room - 3) + '...' : summary;\nreturn { discordMessage: `${head}\\n${body}${tail}` };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        496
+      ],
+      "id": "c3000000-0000-4000-8000-000000000016",
+      "name": "Build Message"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "guildId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "",
+          "cachedResultUrl": ""
+        },
+        "channelId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "",
+          "cachedResultUrl": ""
+        },
+        "content": "={{ $json.discordMessage }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        1648,
+        496
+      ],
+      "id": "c3000000-0000-4000-8000-000000000017",
+      "name": "Send a message",
+      "credentials": {
+        "discordBotApi": {
+          "id": "2GraLvPWoGMpAvtR",
+          "name": "Discord Bot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1856,
+        496
+      ],
+      "id": "c3000000-0000-4000-8000-000000000018",
+      "name": "Wait"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "RSS Guardian World",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS BBC World",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "CNN Index (Jina)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Guardian World": {
+      "main": [
+        [
+          {
+            "node": "Guardian Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardian Filter": {
+      "main": [
+        [
+          {
+            "node": "Guardian Fetch Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardian Fetch Article": {
+      "main": [
+        [
+          {
+            "node": "Guardian Extract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardian Extract": {
+      "main": [
+        [
+          {
+            "node": "Merge Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS BBC World": {
+      "main": [
+        [
+          {
+            "node": "BBC Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BBC Filter": {
+      "main": [
+        [
+          {
+            "node": "BBC Fetch Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BBC Fetch Article": {
+      "main": [
+        [
+          {
+            "node": "BBC Extract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BBC Extract": {
+      "main": [
+        [
+          {
+            "node": "Merge Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "CNN Index (Jina)": {
+      "main": [
+        [
+          {
+            "node": "CNN Links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CNN Links": {
+      "main": [
+        [
+          {
+            "node": "CNN Fetch Article (Jina)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CNN Fetch Article (Jina)": {
+      "main": [
+        [
+          {
+            "node": "CNN Extract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CNN Extract": {
+      "main": [
+        [
+          {
+            "node": "Merge Sources",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge Sources": {
+      "main": [
+        [
+          {
+            "node": "Full Text Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Full Text Only": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Build Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Message": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Taipei"
+  },
+  "tags": []
+}

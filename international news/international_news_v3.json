@@ -1,0 +1,608 @@
+{
+  "name": "每日國際新聞 v5）",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 12,
+              "triggerAtMinute": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -640,
+        480
+      ],
+      "id": "d5000000-0000-4000-8000-000000000001",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://www.theguardian.com/world/rss",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -416,
+        160
+      ],
+      "id": "d5000000-0000-4000-8000-000000000002",
+      "name": "RSS Guardian World",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cutoff = Date.now() - 26 * 3600 * 1000;\nconst strip = s => String(s || '').replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&#x27;|&#39;/g, \"'\")\n  .replace(/&quot;/g, '\"').replace(/\\s+/g, ' ').trim();\nreturn $input.all().map(i => i.json)\n  .filter(j => j.link && j.title && new Date(j.isoDate || j.pubDate || 0).getTime() >= cutoff)\n  .filter(j => !/\\/(live|video|audio|gallery|ng-interactive|picture|membership|commentisfree)\\//.test(j.link))\n  .map(j => ({ json: { source: 'The Guardian', title: strip(j.title), link: j.link.split('?')[0], desc: strip(j.contentSnippet || j.content || '').slice(0, 200) } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        160
+      ],
+      "id": "d5000000-0000-4000-8000-000000000003",
+      "name": "Guardian Candidates",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -416,
+        480
+      ],
+      "id": "d5000000-0000-4000-8000-000000000004",
+      "name": "RSS BBC World",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cutoff = Date.now() - 26 * 3600 * 1000;\nconst strip = s => String(s || '').replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&#x27;|&#39;/g, \"'\")\n  .replace(/&quot;/g, '\"').replace(/\\s+/g, ' ').trim();\nreturn $input.all().map(i => i.json)\n  .filter(j => j.link && j.title && new Date(j.isoDate || j.pubDate || 0).getTime() >= cutoff)\n  .filter(j => /\\/news\\/(articles|world)/.test(j.link))\n  .map(j => ({ json: { source: 'BBC', title: strip(j.title), link: j.link.split('?')[0], desc: strip(j.contentSnippet || j.content || '').slice(0, 200) } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        480
+      ],
+      "id": "d5000000-0000-4000-8000-000000000005",
+      "name": "BBC Candidates",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "https://r.jina.ai/https://edition.cnn.com/world",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -416,
+        800
+      ],
+      "id": "d5000000-0000-4000-8000-000000000006",
+      "name": "CNN Index (Jina)",
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "const md = $input.first().json.data;\nif (typeof md !== 'string') return [];\nconst fmt = d => `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`;\nconst now = Date.now();\n// CNN 網址的日期是美國時間：收 UTC 昨天、UTC 今天、台北今天\nconst days = new Set([fmt(new Date(now - 86400000)), fmt(new Date(now)), fmt(new Date(now + 8 * 3600000))]);\nconst exclude = /\\/(live-news|videos?|interactive|gallery|audio)\\//;\n// 先記下每個連結對應的標題文字（若有）\nconst texts = {};\nconst tre = /\\[([^\\[\\]]{15,300})\\]\\((https:\\/\\/(?:edition|www)\\.cnn\\.com\\/\\d{4}\\/\\d{2}\\/\\d{2}\\/[^)\\s#?]+)/g;\nlet t;\nwhile ((t = tre.exec(md)) !== null) {\n  if (!texts[t[2]] || t[1].length > texts[t[2]].length) texts[t[2]] = t[1].trim();\n}\nconst slugTitle = link => {\n  const seg = link.split('/').filter(Boolean).slice(-2)[0] || '';\n  return decodeURIComponent(seg).replace(/-/g, ' ').replace(/^\\w/, c => c.toUpperCase());\n};\n// 依在頁面上出現的順序（越前面通常越重要）\nconst re = /\\]\\((https:\\/\\/(?:edition|www)\\.cnn\\.com\\/(\\d{4}\\/\\d{2}\\/\\d{2})\\/[^)\\s#?]+)/g;\nconst seen = new Set();\nconst out = [];\nlet m;\nwhile ((m = re.exec(md)) !== null) {\n  const link = m[1];\n  if (!days.has(m[2]) || exclude.test(link) || seen.has(link)) continue;\n  seen.add(link);\n  out.push({ json: { source: 'CNN', title: texts[link] || slugTitle(link), link, desc: '' } });\n  if (out.length >= 20) break;\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        800
+      ],
+      "id": "d5000000-0000-4000-8000-000000000007",
+      "name": "CNN Candidates",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        32,
+        480
+      ],
+      "id": "d5000000-0000-4000-8000-000000000008",
+      "name": "Merge Candidates"
+    },
+    {
+      "parameters": {
+        "jsCode": "const MAX_PER_SOURCE = 40;\nconst seen = new Set(), count = {}, candidates = [];\nfor (const it of $input.all()) {\n  const j = it.json;\n  if (!j.link || !j.title || seen.has(j.link)) continue;\n  count[j.source] = count[j.source] || 0;\n  if (count[j.source] >= MAX_PER_SOURCE) continue;\n  seen.add(j.link);\n  count[j.source]++;\n  candidates.push({ id: candidates.length + 1, source: j.source, title: j.title, link: j.link, desc: j.desc || '' });\n}\nif (!candidates.length) return [];\nconst list = candidates.map(c => `${c.id} | ${c.source} | ${c.title}${c.desc ? ' | ' + c.desc : ''}`).join('\\n');\nreturn [{ json: { list, candidates } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        480
+      ],
+      "id": "d5000000-0000-4000-8000-000000000009",
+      "name": "Build Candidate List"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-5-5",
+          "mode": "id"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.list }}"
+            }
+          ]
+        },
+        "options": {
+          "system": "你是國際新聞的總編輯。以下是三個媒體（The Guardian、BBC、CNN）今天的新聞候選清單，每行格式：編號 | 來源 | 標題 | 摘要（摘要可能沒有）。請替「每個來源」各選出最重要、最具代表性的 6 則，並依重要性由高到低排序。\n選擇準則：\n1. 全球或區域影響力大的硬新聞優先：政治與外交、戰爭與衝突、經濟與市場、重大災害與公共衛生、科技與氣候的重大進展。\n2. 涵蓋不同地區與主題，避免同一來源內重複報導同一件事。不同來源之間也請盡量避免選到同一件事。若同一事件有多家報導，請把它分配給最適合報導它的來源，其他來源改選別的重要新聞；但真正的全球頭條可以讓兩家都選。\n3. 排除評論與專欄、體育、娛樂、生活風格、測驗、新聞信、直播與影音導覽頁。\n4. 清單的順序僅供參考（CNN 的順序大致是首頁版面順序），請以新聞本身的重要性判斷。\n5. 只能使用清單中出現的編號，且每個編號只能出現在它所屬來源的那一組。\n只輸出一個 JSON 物件，不要任何說明文字或程式碼框，格式完全如下：\n{\"The Guardian\": [編號, ...], \"BBC\": [編號, ...], \"CNN\": [編號, ...]}",
+          "maxTokens": 4096
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        464,
+        480
+      ],
+      "id": "d5000000-0000-4000-8000-000000000010",
+      "name": "Select Top Stories",
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "const cands = $('Build Candidate List').first().json.candidates;\nconst SOURCES = ['The Guardian', 'BBC', 'CNN'];\nconst PICK = 6; // 每個來源取 6 則排名候選，之後抓全文失敗時由後面的補上\nconst first = $input.first()?.json || {};\nconst blocks = Array.isArray(first.content) ? first.content : [];\nconst raw = blocks.filter(b => b.type === 'text').map(b => b.text || '').join('\\n');\nlet sel = {};\ntry {\n  const cleaned = raw.trim().replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/, '');\n  const s = cleaned.indexOf('{'), e = cleaned.lastIndexOf('}');\n  sel = JSON.parse(cleaned.slice(s, e + 1));\n} catch (err) { sel = {}; }\nconst byId = new Map(cands.map(c => [c.id, c]));\nconst out = [];\nfor (const src of SOURCES) {\n  const own = cands.filter(c => c.source === src);\n  const picked = [];\n  for (const id of (Array.isArray(sel[src]) ? sel[src] : [])) {\n    const c = byId.get(Number(id));\n    if (c && c.source === src && !picked.includes(c)) picked.push(c);\n    if (picked.length >= PICK) break;\n  }\n  // 模型沒給夠（或呼叫失敗）時，用清單原本順序補滿\n  for (const c of own) {\n    if (picked.length >= PICK) break;\n    if (!picked.includes(c)) picked.push(c);\n  }\n  picked.forEach((c, i) => out.push({ json: { source: c.source, title: c.title, link: c.link, rank: i + 1 } }));\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        480
+      ],
+      "id": "d5000000-0000-4000-8000-000000000011",
+      "name": "Parse Selection"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.source === 'CNN' ? 'https://r.jina.ai/' + $json.link : $json.link }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "Accept",
+              "value": "={{ $json.source === 'CNN' ? 'application/json' : 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' }}"
+            },
+            {
+              "name": "X-Return-Format",
+              "value": "text"
+            },
+            {
+              "name": "X-Remove-Selector",
+              "value": "header, footer, nav, aside"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 3500
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        480
+      ],
+      "id": "d5000000-0000-4000-8000-000000000012",
+      "name": "Fetch Article",
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const meta = $('Parse Selection').item.json;\nconst raw = $json.data;\nif (typeof raw !== 'string' || !raw) return null;\nconst strip = s => s.replace(/<[^>]*>/g, ' ');\nconst dec = s => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n  .replace(/&quot;/g, '\"').replace(/&#x27;|&#39;/g, \"'\").replace(/&nbsp;/g, ' ')\n  .replace(/\\s+/g, ' ').trim();\nconst grab = (seg, re, junk) => {\n  const out = [];\n  let m;\n  while ((m = re.exec(seg)) !== null) {\n    const t = dec(strip(m[1]));\n    if (t && !(junk && junk.test(t))) out.push(t);\n  }\n  return out;\n};\nconst pRe = () => /<p[^>]*>([\\s\\S]*?)<\\/p>/g;\nlet title = meta.title, text = '';\n\nif (meta.source === 'CNN') {\n  // Jina Reader 回傳 JSON（title + content）；舊格式也相容\n  let body = raw, t = '';\n  try {\n    const j = JSON.parse(raw);\n    if (j && j.data) { t = j.data.title || ''; body = j.data.content || j.data.text || ''; }\n  } catch (e) {\n    const tm = raw.match(/^Title:\\s*(.+)$/m);\n    if (tm) t = tm[1];\n    const cm = raw.match(/^\\w+ Content:\\s*$/m);\n    body = cm ? raw.slice(raw.indexOf(cm[0]) + cm[0].length) : raw;\n  }\n  t = String(t).replace(/\\s*\\|\\s*CNN.*$/i, '').trim();\n  if (t) title = t;\n  body = body.replace(/!\\[[^\\]]*\\]\\([^)]*\\)/g, '').replace(/\\[([^\\]]+)\\]\\([^)]*\\)/g, '$1');\n  text = body.split('\\n').map(l => l.trim())\n    .filter(l => l.length >= 60 && !/^(#|\\*|-|>|Image|Sign up|Read more|Watch|Copyright|©|Follow)/i.test(l)).join('\\n');\n\n} else if (meta.source === 'BBC') {\n  const html = raw;\n  const junk = /This video can not be played|To play this video/i;\n  const art = (html.match(/<article[\\s\\S]*?<\\/article>/i) || [html])[0];\n  let paras = grab(art, /<p[^>]*class=\"[^\"]*Paragraph[^\"]*\"[^>]*>([\\s\\S]*?)<\\/p>/g, junk);\n  if (paras.join('').length < 300) {\n    paras = [];\n    for (const part of html.split('data-component=\"text-block\"').slice(1)) {\n      paras.push(...grab(part.split(/data-component=\"/)[0], pRe(), junk));\n    }\n  }\n  if (paras.join('').length < 300) paras = grab(art, pRe(), junk).filter(t => t.length >= 60);\n  if (paras.join('').length < 300) paras = grab(html, pRe(), junk).filter(t => t.length >= 80);\n  text = paras.join('\\n');\n\n} else {\n  // The Guardian\n  const html = raw;\n  const junk = /^(Sign up|Follow |Read more|Related|Advertisement|Reuse this content|Share$|Topics$)/i;\n  for (const m of html.matchAll(/<script[^>]*application\\/ld\\+json[^>]*>([\\s\\S]*?)<\\/script>/g)) {\n    try {\n      const j = JSON.parse(m[1]);\n      for (const o of (Array.isArray(j) ? j : [j])) {\n        if (o && typeof o.articleBody === 'string' && o.articleBody.trim().length > text.length) text = o.articleBody.trim();\n      }\n    } catch (e) {}\n  }\n  if (text.length < 300) {\n    let seg = '';\n    const i = html.indexOf('data-gu-name=\"body\"');\n    if (i >= 0) seg = html.slice(i);\n    else { const k = html.indexOf('id=\"maincontent\"'); if (k >= 0) seg = html.slice(k); }\n    const e = seg.indexOf('</article>');\n    if (e > 0) seg = seg.slice(0, e);\n    text = grab(seg, pRe(), junk).filter(t => t.length >= 40).join('\\n');\n  }\n  if (text.length < 300) {\n    const a = html.match(/<article[\\s\\S]*?<\\/article>/i);\n    if (a) text = grab(a[0], pRe(), junk).filter(t => t.length >= 60).join('\\n');\n  }\n  if (text.length < 300) text = grab(html, pRe(), junk).filter(t => t.length >= 80).join('\\n');\n}\nif (!text) return null;\nreturn { source: meta.source, title, link: meta.link, text };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        480
+      ],
+      "id": "d5000000-0000-4000-8000-000000000013",
+      "name": "Extract Full Text"
+    },
+    {
+      "parameters": {
+        "jsCode": "const MIN_LEN = 400, MAX_LEN = 4000, PER_SOURCE = 3, MAX_TOTAL = 9;\nconst seen = new Set();\nconst count = {};\nconst out = [];\nfor (const it of $input.all()) {\n  const j = it.json;\n  if (!j.text || j.text.length < MIN_LEN) continue;\n  const key = String(j.title).toLowerCase().replace(/[^a-z0-9]/g, '');\n  if (seen.has(key)) continue;\n  count[j.source] = (count[j.source] || 0);\n  if (count[j.source] >= PER_SOURCE) continue;\n  seen.add(key);\n  count[j.source]++;\n  out.push({ json: { source: j.source, title: j.title, link: j.link, text: j.text.slice(0, MAX_LEN) } });\n  if (out.length >= MAX_TOTAL) break;\n}\nreturn out;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        480
+      ],
+      "id": "d5000000-0000-4000-8000-000000000014",
+      "name": "Full Text Only"
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1504,
+        480
+      ],
+      "id": "d5000000-0000-4000-8000-000000000015",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-haiku-5-5",
+          "mode": "id"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.source }}: {{ $json.title }}\n\n{{ $json.text }}"
+            }
+          ]
+        },
+        "options": {
+          "system": "你是一位新聞編輯。我會提供一則英文新聞的全文，請用繁體中文寫一個中文標題與簡介：簡介約150～250字，整理3～5個重點（誰、發生什麼事、為什麼重要）。只根據全文，不要加入自己的評論，不要編造數字或引述；專有名詞第一次出現時可附英文原文。\n只輸出一個 JSON 物件，不要加任何說明文字或 markdown 程式碼框，格式完全如下：\n{\"title\": \"中文標題\", \"summary\": \"中文簡介\"}",
+          "maxTokens": 4096
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        1728,
+        496
+      ],
+      "id": "d5000000-0000-4000-8000-000000000016",
+      "name": "Message a model",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const SHOW_PREVIEW = true; // 改成 false 會把連結包成 <>，Discord 就不會展開預覽圖\nconst src = $('Loop Over Items').item.json;\nconst blocks = Array.isArray($json.content) ? $json.content : [];\nconst raw = blocks.filter(b => b.type === 'text').map(b => b.text || '').join('\\n')\n  || $json.mergedResponse || $json.text || '';\nlet zhTitle = '', summary = '';\nconst cleaned = String(raw).trim().replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/, '');\nconst s = cleaned.indexOf('{'), e = cleaned.lastIndexOf('}');\ntry {\n  const o = JSON.parse(s >= 0 && e > s ? cleaned.slice(s, e + 1) : cleaned);\n  zhTitle = o.title || '';\n  summary = o.summary || o.content || '';\n} catch (err) {\n  const t = cleaned.match(/\"title\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)/);\n  const m = cleaned.match(/\"summary\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)/);\n  zhTitle = t ? t[1] : '';\n  summary = m ? m[1] : (t ? '' : cleaned);\n}\nsummary = summary || '(簡介產生失敗，請點原文連結閱讀)';\n// 英文標題若是網址就不顯示，避免網址重複出現\nconst enTitle = /^https?:\\/\\//i.test(src.title || '') ? '' : (src.title || '');\nconst link = SHOW_PREVIEW ? src.link : `<${src.link}>`;\nconst head = `📰 **【${src.source}】**\\n### ${zhTitle || enTitle}\\n` + (zhTitle && enTitle ? `-# ${enTitle}\\n` : '');\nconst tail = `\\n\\n🔗 ${link}`;\nconst room = 1990 - head.length - tail.length - 1;\nconst body = summary.length > room ? summary.slice(0, room - 3) + '...' : summary;\nreturn { discordMessage: `${head}\\n${body}${tail}` };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2064,
+        496
+      ],
+      "id": "d5000000-0000-4000-8000-000000000017",
+      "name": "Build Message"
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "guildId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "",
+          "cachedResultUrl": ""
+        },
+        "channelId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "",
+          "cachedResultUrl": ""
+        },
+        "content": "={{ $json.discordMessage }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        2272,
+        496
+      ],
+      "id": "d5000000-0000-4000-8000-000000000018",
+      "name": "Send a message",
+      "credentials": {
+        "discordBotApi": {
+          "id": "2GraLvPWoGMpAvtR",
+          "name": "Discord Bot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2480,
+        496
+      ],
+      "id": "d5000000-0000-4000-8000-000000000019",
+      "name": "Wait"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "RSS Guardian World",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS BBC World",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "CNN Index (Jina)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Guardian World": {
+      "main": [
+        [
+          {
+            "node": "Guardian Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardian Candidates": {
+      "main": [
+        [
+          {
+            "node": "Merge Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS BBC World": {
+      "main": [
+        [
+          {
+            "node": "BBC Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BBC Candidates": {
+      "main": [
+        [
+          {
+            "node": "Merge Candidates",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "CNN Index (Jina)": {
+      "main": [
+        [
+          {
+            "node": "CNN Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CNN Candidates": {
+      "main": [
+        [
+          {
+            "node": "Merge Candidates",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge Candidates": {
+      "main": [
+        [
+          {
+            "node": "Build Candidate List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Candidate List": {
+      "main": [
+        [
+          {
+            "node": "Select Top Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Top Stories": {
+      "main": [
+        [
+          {
+            "node": "Parse Selection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Selection": {
+      "main": [
+        [
+          {
+            "node": "Fetch Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Article": {
+      "main": [
+        [
+          {
+            "node": "Extract Full Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Full Text": {
+      "main": [
+        [
+          {
+            "node": "Full Text Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Full Text Only": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Build Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Message": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Taipei"
+  },
+  "tags": []
+}
