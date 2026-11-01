@@ -1,0 +1,435 @@
+{
+  "name": "cnn news",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "https://edition.cnn.com/world",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n    \"User-Agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36\",\n    \"Accept\": \"text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8\",\n    \"Accept-Language\": \"zh-TW,zh;q=0.9,en;q=0.8\",\n    \"Accept-Encoding\": \"gzip, deflate\",\n    \"Connection\": \"keep-alive\",\n    \"Upgrade-Insecure-Requests\": \"1\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -288,
+        416
+      ],
+      "id": "9cb29c21-278a-49bd-b3d6-a621fd464c04",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTime",
+      "typeVersion": 2,
+      "position": [
+        -288,
+        256
+      ],
+      "id": "1cde62aa-5a07-4ac3-81e7-8e21e9e636bf",
+      "name": "Date & Time"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 取得上一個節點的 HTML\nconst html = $input.first().json.data;\n\n// 方法1: 直接匹配包含這三個 class 的 <a> 標籤的 href\nconst linkRegex = /<a[^>]*href=\"([^\"]+)\"[^>]*class=\"[^\"]*container__link[^\"]*container__link--type-article[^\"]*container_lead-plus-headlines__link[^\"]*\"[^>]*>/g;\n\nlet results = [];\nlet match;\n\nwhile ((match = linkRegex.exec(html)) !== null) {\n    const href = match[1];\n    results.push({ href });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        416
+      ],
+      "id": "2f1946e4-edbe-4223-933b-ce86b98d7b9d",
+      "name": "get url",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// 處理單個項目\nconst href = $json.href;\n\n// 獲取當前日期 - 如果沒有 currentDate，使用當前時間\nlet currentDate;\nif ($json.currentDate) {\n    currentDate = $json.currentDate;\n} else {\n    // 使用當前時間（台北時區 +8）\n    const now = new Date();\n    currentDate = now.toISOString();\n}\n\n// 計算昨日日期\nconst today = new Date(currentDate);\nconst yesterday = new Date(today);\nyesterday.setDate(today.getDate() - 1); // 減一天\n\n// 格式化昨日日期 (格式: YYYY/MM/DD)\nconst yesterdayString = `/${yesterday.getFullYear()}/${String(yesterday.getMonth() + 1).padStart(2, '0')}/${String(yesterday.getDate()).padStart(2, '0')}/`;\n\n// 檢查這個 href 是否包含昨日日期\nif (href && href.includes(yesterdayString)) {\n    // 如果包含昨日日期，返回這個項目\n    return { href: href };\n} else {\n    // 如果不包含昨日日期，返回 null（n8n 會跳過這個項目）\n    return null;\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        416
+      ],
+      "id": "ea4c3e37-45f5-4acc-83f4-f5df4a5fd00f",
+      "name": "get yesterday news"
+    },
+    {
+      "parameters": {
+        "url": "=https://edition.cnn.com{{ $json.href }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n    \"User-Agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36\",\n    \"Accept\": \"text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8\",\n    \"Accept-Language\": \"zh-TW,zh;q=0.9,en;q=0.8\",\n    \"Accept-Encoding\": \"gzip, deflate\",\n    \"Connection\": \"keep-alive\",\n    \"Upgrade-Insecure-Requests\": \"1\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        512,
+        272
+      ],
+      "id": "d2118380-5ba7-4559-92e3-cd07efbfabbc",
+      "name": "get news article"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// n8n環境下提取指定class內容的函數\nfunction extractContent(data) {\n    let htmlString = '';\n    \n    // 處理不同類型的輸入數據\n    if (typeof data === 'string') {\n        htmlString = data;\n    } else if (typeof data === 'object' && data !== null) {\n        // 如果是對象，嘗試找到HTML內容\n        if (data.html) htmlString = data.html;\n        else if (data.content) htmlString = data.content;\n        else if (data.data) htmlString = data.data;\n        else if (data.body) htmlString = data.body;\n        else htmlString = JSON.stringify(data);\n    }\n    \n    // 提取標題內容 - 使用更寬鬆的匹配\n    const titleRegex = /<[^>]*class=\"[^\"]*headline__text[^\"]*\"[^>]*>(.*?)<\\/[^>]+>/gs;\n    const titles = [];\n    let titleMatch;\n    \n    while ((titleMatch = titleRegex.exec(htmlString)) !== null) {\n        let content = titleMatch[1];\n        content = content.replace(/<[^>]*>/g, '');\n        content = content\n            .replace(/&amp;/g, '&')\n            .replace(/&lt;/g, '<')\n            .replace(/&gt;/g, '>')\n            .replace(/&quot;/g, '\"')\n            .replace(/&#39;/g, \"'\")\n            .replace(/&nbsp;/g, ' ');\n        content = content.replace(/\\s+/g, ' ').trim();\n        \n        if (content) {\n            titles.push(content);\n        }\n    }\n    \n    // 提取段落內容 - 使用更寬鬆的匹配\n    const paragraphRegex = /<[^>]*class=\"[^\"]*paragraph-elevate[^\"]*\"[^>]*>(.*?)<\\/[^>]+>/gs;\n    const paragraphs = [];\n    let paragraphMatch;\n    \n    while ((paragraphMatch = paragraphRegex.exec(htmlString)) !== null) {\n        let content = paragraphMatch[1];\n        content = content.replace(/<[^>]*>/g, '');\n        content = content\n            .replace(/&amp;/g, '&')\n            .replace(/&lt;/g, '<')\n            .replace(/&gt;/g, '>')\n            .replace(/&quot;/g, '\"')\n            .replace(/&#39;/g, \"'\")\n            .replace(/&nbsp;/g, ' ');\n        content = content.replace(/\\s+/g, ' ').trim();\n        \n        if (content) {\n            paragraphs.push(content);\n        }\n    }\n    \n    return {\n        title: titles.join(' '),  // 只包含headline__text的內容\n        merged: paragraphs.join(' ')  // 只包含段落內容，不包含標題\n    };\n}\n\n// 更寬鬆的匹配方式（如果上面的正則太嚴格）\nfunction extractContentLoose(data) {\n    let htmlString = '';\n    \n    if (typeof data === 'string') {\n        htmlString = data;\n    } else if (typeof data === 'object' && data !== null) {\n        if (data.html) htmlString = data.html;\n        else if (data.content) htmlString = data.content;\n        else if (data.data) htmlString = data.data;\n        else if (data.body) htmlString = data.body;\n        else htmlString = JSON.stringify(data);\n    }\n    \n    // 提取標題（寬鬆匹配）\n    const titleRegex = /<[^>]*class=\"[^\"]*(?=.*headline__text)(?=.*inline-placeholder)(?=.*vossi-headline-text)[^\"]*\"[^>]*>(.*?)<\\/[^>]+>/gs;\n    const titles = [];\n    let titleMatch;\n    \n    while ((titleMatch = titleRegex.exec(htmlString)) !== null) {\n        let content = titleMatch[1];\n        content = content.replace(/<[^>]*>/g, '');\n        content = content\n            .replace(/&amp;/g, '&')\n            .replace(/&lt;/g, '<')\n            .replace(/&gt;/g, '>')\n            .replace(/&quot;/g, '\"')\n            .replace(/&#39;/g, \"'\")\n            .replace(/&nbsp;/g, ' ');\n        content = content.replace(/\\s+/g, ' ').trim();\n        \n        if (content) {\n            titles.push(content);\n        }\n    }\n    \n    // 提取段落（寬鬆匹配）\n    const paragraphRegex = /<[^>]*class=\"[^\"]*(?=.*paragraph-elevate)(?=.*inline-placeholder)(?=.*vossi-paragraph)[^\"]*\"[^>]*>(.*?)<\\/[^>]+>/gs;\n    const paragraphs = [];\n    let paragraphMatch;\n    \n    while ((paragraphMatch = paragraphRegex.exec(htmlString)) !== null) {\n        let content = paragraphMatch[1];\n        content = content.replace(/<[^>]*>/g, '');\n        content = content\n            .replace(/&amp;/g, '&')\n            .replace(/&lt;/g, '<')\n            .replace(/&gt;/g, '>')\n            .replace(/&quot;/g, '\"')\n            .replace(/&#39;/g, \"'\")\n            .replace(/&nbsp;/g, ' ');\n        content = content.replace(/\\s+/g, ' ').trim();\n        \n        if (content) {\n            paragraphs.push(content);\n        }\n    }\n    \n    return {\n        title: titles.join(' '),  // 只包含headline__text的內容\n        merged: paragraphs.join(' ')  // 只包含段落內容，不包含標題\n    };\n}\n\n// n8n使用示例 - 將以下代碼直接放在Code節點中\n\n// 獲取輸入數據\nconst inputData = $json.data;\n\n// 提取內容\nconst result = extractContent(inputData);\n\n// 如果第一種方法沒有結果，嘗試更寬鬆的匹配\nif (!result.title && !result.merged) {\n    const looseResult = extractContentLoose(inputData);\n    return {\n        title: looseResult.title,\n        merged: looseResult.merged\n    };\n}\n\n// 返回結果\nreturn {\n    title: result.title,\n    merged: result.merged\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        272
+      ],
+      "id": "91def54c-2d8e-4190-85c8-7581a3dcd7be",
+      "name": "merge"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-nano",
+          "mode": "list",
+          "cachedResultName": "GPT-5-NANO"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "我想要你扮演評論家的角色。我會提供一些相關新聞故事或話題，你的任務是撰寫一篇見解深入的評論文章，關注當前話題。你應該運用自己的經驗，深入解釋為什麼某件事情很重要，並用事實支持觀點，討論任何問題可能存在的解決方案。\n回覆格式請完全依照:\n[\n{\n\"title\":\n\"content\":\n}\n]\ncontent500字以內\n使用繁體中文回答",
+              "role": "system"
+            },
+            {
+              "content": "={{ $json.title }}:\n{{ $json.merged }}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        880,
+        272
+      ],
+      "id": "106beb58-cd56-4878-878f-1d6e827760b2",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "FSKMaCkfO0fJYF4V",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "guildId": {
+          "__rl": true,
+          "value": "1094273092211195984",
+          "mode": "list",
+          "cachedResultName": "遊戲討論區",
+          "cachedResultUrl": "https://discord.com/channels/1094273092211195984"
+        },
+        "channelId": {
+          "__rl": true,
+          "value": "1403805618384535696",
+          "mode": "list",
+          "cachedResultName": "cnn每日新聞",
+          "cachedResultUrl": "https://discord.com/channels/1094273092211195984/1403805618384535696"
+        },
+        "content": "=https://edition.cnn.com/{{ $json.href }}\n{{ $json[\"message.content.title\"] }}\n{{ $json[\"message.content.content\"] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        416
+      ],
+      "id": "0fff88e3-60b3-4d76-917a-ca2c22679002",
+      "name": "Send a message",
+      "webhookId": "bd88227a-df79-492f-ba9d-dcbff557a282",
+      "credentials": {
+        "discordBotApi": {
+          "id": "2GraLvPWoGMpAvtR",
+          "name": "Discord Bot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 12,
+              "triggerAtMinute": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -496,
+        416
+      ],
+      "id": "919ee364-3909-42df-8951-6d8ab725cfec",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        288,
+        416
+      ],
+      "id": "3a0f4e20-86a8-4cdb-8210-46bc8b39602d",
+      "name": "Remove Duplicates"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "message.content.title, message.content.content",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        272
+      ],
+      "id": "b9586af8-f3aa-4736-90eb-346e98a4c218",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1680,
+        400
+      ],
+      "id": "d4a37610-1220-4547-aa23-825fcd0e2588",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2048,
+        416
+      ],
+      "id": "d1aff3b8-3951-4bf6-a81e-fff3ba08bf73",
+      "name": "Wait",
+      "webhookId": "6cabb6d8-3d02-41e1-87a8-3bcf6e29bb86"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1472,
+        400
+      ],
+      "id": "62524541-f1f9-4dd3-ad36-a0460f2f1505",
+      "name": "Merge"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "get url",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "main": [
+        [
+          {
+            "node": "get yesterday news",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get url": {
+      "main": [
+        [
+          {
+            "node": "get yesterday news",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get yesterday news": {
+      "main": [
+        [
+          {
+            "node": "Remove Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get news article": {
+      "main": [
+        [
+          {
+            "node": "merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "merge": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Duplicates": {
+      "main": [
+        [
+          {
+            "node": "get news article",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Date & Time",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2e92eeb7-d4e9-4f50-a344-fb8fcc3b584d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0b75ca2f4eb4f5ebafa325cc14dbc1d066841d5b752ce7294a0b97bebb6248a0"
+  },
+  "id": "mveHf2U6v1Bcb5E0",
+  "tags": []
+}
