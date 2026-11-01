@@ -1,6 +1,6 @@
-# International News 工作流
+# International News 
 
-## 版本三：international_news_v3.json(2026/10/31)
+## 版本三：international_news_v3(2026/10/31)
 #### 2026/11/01 起正式啟用
 邏輯新增使用 Claude Sonnet 5.5 挑選最重要的新聞，不用在每一則都抓全文。
 
@@ -66,7 +66,7 @@ Schedule Trigger（12:10，台北時區）
 
 ---
 
-## 版本二：international_news_v2.json(2026/10/17)
+## 版本二：international_news_v2(2026/10/17)
 #### 未正式上線使用
 
 移植至 GCP，重點差異:從單一 CNN news 變更為多來源
@@ -135,7 +135,7 @@ Schedule Trigger（12:10，台北時區）
 
 ---
 
-## 版本一：CNN_News.json(2026/03/05)
+## 版本一：CNN_News(2026/03/05)
 
 > 為第一代在 zeabur 運行的版本，於 2026/10/15 因資安事件廢除
 
