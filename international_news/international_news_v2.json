@@ -1,5 +1,5 @@
 {
-  "name": "每日國際新聞 v4（Anthropic）",
+  "name": "international_news_v2",
   "nodes": [
     {
       "parameters": {
@@ -382,7 +382,7 @@
       "name": "Send a message",
       "credentials": {
         "discordBotApi": {
-          "id": "",
+          "id": "2GraLvPWoGMpAvtR",
           "name": "Discord Bot account"
         }
       }
