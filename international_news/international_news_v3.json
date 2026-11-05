@@ -357,7 +357,7 @@
       "name": "Send a message",
       "credentials": {
         "discordBotApi": {
-          "id": "2GraLvPWoGMpAvtR",
+          "id": "",
           "name": "Discord Bot account"
         }
       }
